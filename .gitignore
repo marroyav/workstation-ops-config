@@ -46,6 +46,7 @@
 **/fnal-control-state/
 **/fnal-sync-state/
 **/github-build-state/
+downloaded-auth-configs/
 
 # Large local binaries and vendor/tool caches.
 **/.local/bin/glow

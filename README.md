@@ -21,6 +21,12 @@ state, logs, browser state, generated caches, or large local binaries.
   workstation setup.
 - `docs/` records excluded sensitive files and restore notes.
 
+## Kerberos and CERN/FNAL Access
+
+See `docs/local-kerberos-cern-fnal.md` for the local WSL Kerberos setup,
+including the `arroyave@FNAL.GOV` and `marroyav@CERN.CH` principals, the
+installed `/etc/krb5.conf` reference, and the CERN SSH alias layout.
+
 ## Restore Notes
 
 Review paths before copying because several files contain workstation-specific
