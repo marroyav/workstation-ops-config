@@ -1,0 +1,41 @@
+#!/usr/bin/env bash
+set -eu  # keep /bin/sh-safe; no pipefail
+
+POW='/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe'
+WIN_BAT='C:\Xilinx\Vivado\2024.1\bin\vivado.bat'
+
+# Convert args: make -source an ABSOLUTE Windows path; convert obvious POSIX paths
+CONVERTED=()
+prev=""
+for a in "$@"; do
+  if [[ "$prev" == "-source" ]]; then
+    a=$(wslpath -w "$(realpath "$a")")
+  elif [[ "$prev" == "-tclargs" ]]; then
+    [[ "$a" == /* || "$a" == .*/* ]] && a=$(wslpath -w "$a")
+  elif [[ "$a" == /* || "$a" == .*/* ]]; then
+    a=$(wslpath -w "$a")
+  fi
+  CONVERTED+=("$a")
+  prev="$a"
+done
+
+# Join args for PowerShell (it handles quoting much better than cmd.exe)
+ARGS="${CONVERTED[*]}"
+
+# Use a Windows working dir. If $PWD maps to a UNC path (typical for WSL
+# home directories), fall back to the user's Windows temp directory instead of
+# C:\ so Vivado can always write jou/log files.
+WINPWD=$(wslpath -w "$PWD" 2>/dev/null || true)
+USE_TEMP=0
+if [[ -z "${WINPWD:-}" || "$WINPWD" == \\\\* ]]; then
+  USE_TEMP=1
+fi
+
+# Run vivado.bat via PowerShell with a proper working directory
+if [[ "$USE_TEMP" -eq 1 ]]; then
+  exec "$POW" -NoProfile -Command \
+    "Set-Location -LiteralPath \$env:TEMP; & '$WIN_BAT' $ARGS"
+else
+  exec "$POW" -NoProfile -Command \
+    "Set-Location -LiteralPath '$WINPWD'; & '$WIN_BAT' $ARGS"
+fi

@@ -1,0 +1,34 @@
+#!/usr/bin/env bash
+set -eu  # don't add -o pipefail; some shells invoke via /bin/sh
+
+WIN_BAT='C:\Xilinx\Vivado\2024.1\bin\vivado.bat'
+CMD='/mnt/c/Windows/System32/cmd.exe'
+
+# Convert args: make the file after -source an ABSOLUTE Windows path.
+CONVERTED=()
+prev=""
+for a in "$@"; do
+  if [[ "$prev" == "-source" ]]; then
+    a=$(wslpath -w "$(realpath "$a")")
+  elif [[ "$prev" == "-tclargs" ]]; then
+    [[ "$a" == /* || "$a" == .*/* ]] && a=$(wslpath -w "$a")
+  elif [[ "$a" == /* || "$a" == .*/* ]]; then
+    a=$(wslpath -w "$a")
+  fi
+  CONVERTED+=("$a")
+  prev="$a"
+done
+ARGS="${CONVERTED[*]}"
+
+# Windows working dir: avoid UNC (\\wsl$...) by falling back to C:\ if needed
+WINPWD=$(wslpath -w "$PWD" 2>/dev/null || echo 'C:\')
+[[ "$WINPWD" == \\\\* ]] && WINPWD='C:\'
+
+# Build a clean cmd.exe line WITHOUT backslash-escaped quotes
+CMDLINE=$(cat <<EOF
+pushd $WINPWD && set "VIV=$WIN_BAT" && call "%VIV%" $ARGS
+EOF
+)
+
+exec "$CMD" /D /V:ON /C "$CMDLINE"
+

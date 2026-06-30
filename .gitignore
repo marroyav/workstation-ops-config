@@ -1,0 +1,57 @@
+# Secret and credential material. Keep these in a password manager or secret
+# backup, never in this repo.
+**/.ssh/id_*
+**/.ssh/*_key*
+**/.ssh/authorized_keys
+**/.ssh/known_hosts*
+**/.ssh/cm-*
+**/.ssh/*.pid
+**/.ssh/*.log
+**/*.pem
+**/*.key
+**/*.p12
+**/*.pfx
+**/.netrc
+**/github-token
+**/*token*
+**/*secret*
+**/*credential*
+**/auth.json
+
+# Histories and local application state.
+**/.bash_history
+**/.zsh_history
+**/.lesshst
+**/.viminfo
+**/.wget-hsts
+**/.codex/history.jsonl
+**/.codex/session_index.jsonl
+**/.codex/*.sqlite*
+**/.codex/shell_snapshots/
+**/.codex/.tmp/
+**/.cache/
+**/.config/chromium/
+**/.dbus/
+**/.npm/
+**/.rustup/
+
+# Runtime output and generated state.
+**/*.log
+**/*.out
+**/*.nohup
+**/*.pid
+**/__pycache__/
+**/*.pyc
+**/fnal-archive-state/
+**/fnal-control-state/
+**/fnal-sync-state/
+**/github-build-state/
+
+# Large local binaries and vendor/tool caches.
+**/.local/bin/glow
+**/.local/bin/tectonic
+**/.fzf/
+**/.venvs/
+**/node_modules/
+**/target/
+**/Downloads/

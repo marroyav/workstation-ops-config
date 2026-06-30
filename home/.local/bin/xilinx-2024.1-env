@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+set -e
+
+saved_args=("$@")
+
+if [ -f /opt/Xilinx/Vivado/2024.1/settings64.sh ]; then
+  # shellcheck disable=SC1091
+  . /opt/Xilinx/Vivado/2024.1/settings64.sh
+fi
+
+if [ -f /opt/Xilinx/Vitis/2024.1/settings64.sh ]; then
+  # shellcheck disable=SC1091
+  . /opt/Xilinx/Vitis/2024.1/settings64.sh
+fi
+
+if [ -f /opt/Xilinx/PetaLinux/2024.1/tools/settings.sh ]; then
+  set --
+  # shellcheck disable=SC1091
+  . /opt/Xilinx/PetaLinux/2024.1/tools/settings.sh
+fi
+
+set -- "${saved_args[@]}"
+
+if [ "$#" -gt 0 ]; then
+  exec "$@"
+fi
+
+exec "${SHELL:-/bin/bash}" -i
