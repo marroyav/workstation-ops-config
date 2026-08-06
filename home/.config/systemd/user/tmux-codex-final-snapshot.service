@@ -1,0 +1,12 @@
+[Unit]
+Description=Take a final work tmux/Codex snapshot when the user manager stops
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=%h/.local/bin/tmux-codex save work --quiet --if-running
+ExecStop=%h/.local/bin/tmux-codex save work --quiet --if-running
+TimeoutStopSec=10s
+
+[Install]
+WantedBy=default.target

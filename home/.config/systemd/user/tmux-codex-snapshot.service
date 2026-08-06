@@ -1,0 +1,7 @@
+[Unit]
+Description=Snapshot the work tmux session and live Codex thread IDs
+
+[Service]
+Type=oneshot
+ExecStart=%h/.local/bin/tmux-codex save work --quiet --if-running
+Nice=10

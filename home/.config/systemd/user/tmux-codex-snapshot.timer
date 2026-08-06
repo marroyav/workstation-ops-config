@@ -1,0 +1,11 @@
+[Unit]
+Description=Refresh the work tmux/Codex snapshot every minute
+
+[Timer]
+OnStartupSec=30s
+OnUnitInactiveSec=1min
+AccuracySec=10s
+Unit=tmux-codex-snapshot.service
+
+[Install]
+WantedBy=timers.target

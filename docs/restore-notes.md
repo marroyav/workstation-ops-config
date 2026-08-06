@@ -13,10 +13,22 @@ chmod 700 /home/neutrino/.ssh
 chmod 600 /home/neutrino/.ssh/config /home/neutrino/.ssh/sshd_config_workstation
 chmod 755 /home/neutrino/bin/*.sh /home/neutrino/.local/bin/vivado*
 chmod 755 /home/neutrino/.local/bin/xilinx-2024.1-env
+chmod 755 /home/neutrino/.local/bin/tmux-codex
 ```
 
 Then restore SSH keys and tokens from their encrypted backup, not from this
 repo.
+
+To enable automatic tmux/Codex snapshots after copying the user-systemd units:
+
+```bash
+systemctl --user daemon-reload
+systemctl --user enable --now tmux-codex-snapshot.timer
+systemctl --user enable --now tmux-codex-final-snapshot.service
+```
+
+See `docs/tmux-codex-sessions.md` for runtime-state backup requirements and
+restore behavior.
 
 ## Files That Need Separate Secret Backup
 

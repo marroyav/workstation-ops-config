@@ -1,0 +1,650 @@
+#!/usr/bin/env python3
+"""Snapshot a tmux session and restore its Codex conversations by UUID."""
+
+from __future__ import annotations
+
+import argparse
+import datetime as dt
+import json
+import os
+import platform
+import re
+import shlex
+import shutil
+import sqlite3
+import subprocess
+import sys
+from collections import defaultdict, deque
+from pathlib import Path
+from urllib.parse import quote
+
+
+SCHEMA_VERSION = 1
+# tmux renders most control characters as octal escape text, but preserves tabs.
+# Window names and paths containing tabs/newlines are intentionally rejected.
+FIELD_SEPARATOR = "\t"
+UUID_PATTERN = re.compile(
+    r"([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-"
+    r"[0-9a-fA-F]{4}-[0-9a-fA-F]{12})\.jsonl(?: \(deleted\))?$"
+)
+CODEX_COMMANDS = {"codex", "codex-cli"}
+
+
+class TmuxCodexError(RuntimeError):
+    pass
+
+
+def state_root() -> Path:
+    configured = os.environ.get("XDG_STATE_HOME")
+    base = Path(configured).expanduser() if configured else Path.home() / ".local" / "state"
+    return base / "tmux-codex"
+
+
+def state_path(session_name: str) -> Path:
+    return state_root() / f"{quote(session_name, safe='._-')}.json"
+
+
+def run_tmux(*args: str, check: bool = True) -> subprocess.CompletedProcess[str]:
+    try:
+        result = subprocess.run(
+            ["tmux", *args],
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=False,
+        )
+    except FileNotFoundError as exc:
+        raise TmuxCodexError("tmux is not installed or is not on PATH") from exc
+    if check and result.returncode:
+        detail = result.stderr.strip() or result.stdout.strip() or "unknown tmux error"
+        raise TmuxCodexError(f"tmux {' '.join(args)} failed: {detail}")
+    return result
+
+
+def session_exists(session_name: str) -> bool:
+    return run_tmux("has-session", "-t", f"={session_name}", check=False).returncode == 0
+
+
+def parse_records(output: str, field_count: int, description: str) -> list[list[str]]:
+    records: list[list[str]] = []
+    for line in output.splitlines():
+        fields = line.split(FIELD_SEPARATOR)
+        if len(fields) != field_count:
+            raise TmuxCodexError(
+                f"could not parse {description}; a name or path may contain a tab or newline"
+            )
+        records.append(fields)
+    return records
+
+
+def process_children() -> dict[int, list[int]]:
+    children: dict[int, list[int]] = defaultdict(list)
+    for proc_dir in Path("/proc").iterdir():
+        if not proc_dir.name.isdigit():
+            continue
+        try:
+            stat = (proc_dir / "stat").read_text()
+            after_name = stat[stat.rfind(")") + 2 :].split()
+            parent_pid = int(after_name[1])
+            children[parent_pid].append(int(proc_dir.name))
+        except (FileNotFoundError, PermissionError, ProcessLookupError, ValueError, IndexError):
+            continue
+    return children
+
+
+def descendants(root_pid: int, children: dict[int, list[int]]) -> list[int]:
+    found: list[int] = []
+    pending: deque[int] = deque([root_pid])
+    seen: set[int] = set()
+    while pending:
+        pid = pending.popleft()
+        if pid in seen:
+            continue
+        seen.add(pid)
+        found.append(pid)
+        pending.extend(children.get(pid, ()))
+    return found
+
+
+def rollout_ids(root_pid: int, children: dict[int, list[int]]) -> set[str]:
+    ids: set[str] = set()
+    for pid in descendants(root_pid, children):
+        fd_dir = Path("/proc") / str(pid) / "fd"
+        try:
+            descriptors = list(fd_dir.iterdir())
+        except (FileNotFoundError, PermissionError, ProcessLookupError):
+            continue
+        for descriptor in descriptors:
+            try:
+                target = os.readlink(descriptor)
+            except (FileNotFoundError, PermissionError, ProcessLookupError, OSError):
+                continue
+            if "/.codex/sessions/" not in target or "/rollout-" not in target:
+                continue
+            match = UUID_PATTERN.search(target)
+            if match:
+                ids.add(match.group(1).lower())
+    return ids
+
+
+def codex_home() -> Path:
+    configured = os.environ.get("CODEX_HOME")
+    return Path(configured).expanduser() if configured else Path.home() / ".codex"
+
+
+def root_thread_candidates(thread_ids: set[str]) -> set[str]:
+    if len(thread_ids) < 2:
+        return set(thread_ids)
+    database = codex_home() / "state_5.sqlite"
+    if not database.exists():
+        return set(thread_ids)
+    placeholders = ",".join("?" for _ in thread_ids)
+    try:
+        connection = sqlite3.connect(f"file:{database}?mode=ro", uri=True, timeout=1)
+        try:
+            children = {
+                row[0]
+                for row in connection.execute(
+                    f"SELECT child_thread_id FROM thread_spawn_edges "
+                    f"WHERE child_thread_id IN ({placeholders})",
+                    tuple(thread_ids),
+                )
+            }
+        finally:
+            connection.close()
+    except sqlite3.Error:
+        return set(thread_ids)
+    roots = thread_ids - children
+    return roots or set(thread_ids)
+
+
+def previous_pane(
+    previous: dict | None, window_index: int, window_name: str, pane_index: int
+) -> dict | None:
+    if not previous:
+        return None
+    name_matches: list[dict] = []
+    for window in previous.get("windows", []):
+        for pane in window.get("panes", []):
+            if pane.get("index") != pane_index:
+                continue
+            if window.get("index") == window_index:
+                return pane
+            if window.get("name") == window_name:
+                name_matches.append(pane)
+    return name_matches[0] if len(name_matches) == 1 else None
+
+
+def read_snapshot(session_name: str, required: bool = True) -> dict | None:
+    path = state_path(session_name)
+    if not path.exists():
+        if required:
+            raise TmuxCodexError(
+                f"no snapshot for {session_name!r}; run: tmux-codex save {shlex.quote(session_name)}"
+            )
+        return None
+    try:
+        data = json.loads(path.read_text())
+    except (OSError, json.JSONDecodeError) as exc:
+        if required:
+            raise TmuxCodexError(f"cannot read snapshot {path}: {exc}") from exc
+        return None
+    if data.get("schema_version") != SCHEMA_VERSION:
+        if required:
+            raise TmuxCodexError(
+                f"snapshot schema {data.get('schema_version')!r} is not supported"
+            )
+        return None
+    if data.get("session") != session_name:
+        if required:
+            raise TmuxCodexError(f"snapshot {path} belongs to another tmux session")
+        return None
+    return data
+
+
+def atomic_write(path: Path, data: dict) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.parent.chmod(0o700)
+    temporary = path.with_name(f".{path.name}.{os.getpid()}.tmp")
+    descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    try:
+        with os.fdopen(descriptor, "w") as stream:
+            json.dump(data, stream, indent=2, sort_keys=True)
+            stream.write("\n")
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temporary, path)
+        path.chmod(0o600)
+        directory_fd = os.open(path.parent, os.O_RDONLY)
+        try:
+            os.fsync(directory_fd)
+        finally:
+            os.close(directory_fd)
+    finally:
+        try:
+            temporary.unlink()
+        except FileNotFoundError:
+            pass
+
+
+def capture_snapshot(session_name: str) -> tuple[dict, list[str]]:
+    if not session_exists(session_name):
+        raise TmuxCodexError(f"tmux session {session_name!r} is not running")
+
+    previous = read_snapshot(session_name, required=False)
+    window_format = FIELD_SEPARATOR.join(
+        (
+            "#{window_id}",
+            "#{window_index}",
+            "#{window_name}",
+            "#{window_layout}",
+            "#{window_active}",
+            "#{window_width}",
+            "#{window_height}",
+        )
+    )
+    window_records = parse_records(
+        run_tmux(
+            "list-windows", "-t", f"={session_name}", "-F", window_format
+        ).stdout,
+        7,
+        "tmux windows",
+    )
+    if not window_records:
+        raise TmuxCodexError(f"tmux session {session_name!r} has no windows")
+
+    children = process_children()
+    warnings: list[str] = []
+    windows: list[dict] = []
+    pane_format = FIELD_SEPARATOR.join(
+        (
+            "#{pane_id}",
+            "#{pane_index}",
+            "#{pane_pid}",
+            "#{pane_current_command}",
+            "#{pane_current_path}",
+            "#{pane_active}",
+            "#{pane_dead}",
+            "#{pane_start_command}",
+        )
+    )
+
+    for (
+        window_id,
+        raw_window_index,
+        window_name,
+        layout,
+        raw_window_active,
+        raw_width,
+        raw_height,
+    ) in window_records:
+        window_index = int(raw_window_index)
+        pane_records = parse_records(
+            run_tmux("list-panes", "-t", window_id, "-F", pane_format).stdout,
+            8,
+            f"panes in window {window_index}",
+        )
+        panes: list[dict] = []
+        for (
+            pane_id,
+            raw_pane_index,
+            raw_pid,
+            current_command,
+            current_path,
+            raw_pane_active,
+            raw_pane_dead,
+            start_command,
+        ) in pane_records:
+            pane_index = int(raw_pane_index)
+            old_pane = previous_pane(previous, window_index, window_name, pane_index)
+            candidates = rollout_ids(int(raw_pid), children)
+            roots = root_thread_candidates(candidates)
+            thread_id: str | None = None
+            id_source: str | None = None
+
+            if len(roots) == 1:
+                thread_id = next(iter(roots))
+                id_source = "open-rollout"
+            elif old_pane and old_pane.get("thread_id") in roots:
+                thread_id = old_pane["thread_id"]
+                id_source = "previous-snapshot"
+            elif current_command in CODEX_COMMANDS and old_pane and old_pane.get("thread_id"):
+                thread_id = old_pane["thread_id"]
+                id_source = "previous-snapshot"
+
+            if thread_id:
+                kind = "codex"
+            elif current_command in CODEX_COMMANDS:
+                kind = "codex-unresolved"
+                warnings.append(
+                    f"{window_index}:{window_name} pane {pane_index}: "
+                    "Codex is running but its thread UUID could not be resolved"
+                )
+            else:
+                kind = "shell"
+
+            panes.append(
+                {
+                    "id": pane_id,
+                    "index": pane_index,
+                    "pid_at_save": int(raw_pid),
+                    "current_command": current_command,
+                    "cwd": current_path,
+                    "active": raw_pane_active == "1",
+                    "dead": raw_pane_dead == "1",
+                    "start_command": start_command,
+                    "kind": kind,
+                    "thread_id": thread_id,
+                    "thread_id_source": id_source,
+                }
+            )
+        panes.sort(key=lambda pane: pane["index"])
+        windows.append(
+            {
+                "id": window_id,
+                "index": window_index,
+                "name": window_name,
+                "layout": layout,
+                "active": raw_window_active == "1",
+                "width": int(raw_width),
+                "height": int(raw_height),
+                "panes": panes,
+            }
+        )
+
+    windows.sort(key=lambda window: window["index"])
+    snapshot = {
+        "schema_version": SCHEMA_VERSION,
+        "saved_at": dt.datetime.now(dt.timezone.utc).isoformat(),
+        "host": platform.node(),
+        "wsl_distro": os.environ.get("WSL_DISTRO_NAME"),
+        "session": session_name,
+        "windows": windows,
+    }
+    return snapshot, warnings
+
+
+def snapshot_counts(snapshot: dict) -> tuple[int, int, int]:
+    panes = [pane for window in snapshot["windows"] for pane in window["panes"]]
+    codex = sum(pane["kind"] == "codex" for pane in panes)
+    unresolved = sum(pane["kind"] == "codex-unresolved" for pane in panes)
+    return len(snapshot["windows"]), codex, unresolved
+
+
+def save_command(session_name: str, quiet: bool, if_running: bool) -> int:
+    if if_running and not session_exists(session_name):
+        return 0
+    snapshot, warnings = capture_snapshot(session_name)
+    path = state_path(session_name)
+    atomic_write(path, snapshot)
+    if not quiet:
+        windows, codex, unresolved = snapshot_counts(snapshot)
+        print(
+            f"Saved {windows} windows and {codex} Codex threads to {path}"
+            + (f" ({unresolved} unresolved)" if unresolved else "")
+        )
+        for warning in warnings:
+            print(f"warning: {warning}", file=sys.stderr)
+    return 0
+
+
+def compact_path(path: str) -> str:
+    home = str(Path.home())
+    return "~" + path[len(home) :] if path == home or path.startswith(home + "/") else path
+
+
+def print_snapshot(snapshot: dict) -> None:
+    path = state_path(snapshot["session"])
+    print(f"Snapshot: {path}")
+    print(f"Saved:    {snapshot['saved_at']}")
+    print(f"Session:  {snapshot['session']}")
+    for window in snapshot["windows"]:
+        for pane in window["panes"]:
+            label = f"{window['index']}:{window['name']}"
+            if len(window["panes"]) > 1:
+                label += f".{pane['index']}"
+            if pane["kind"] == "codex":
+                detail = f"codex resume {pane['thread_id']}"
+            elif pane["kind"] == "codex-unresolved":
+                detail = "Codex UUID unresolved; restores as shell"
+            else:
+                detail = "shell"
+            print(f"  {label:<20} {detail}  [{compact_path(pane['cwd'])}]")
+    live = "running" if session_exists(snapshot["session"]) else "not running"
+    print(f"Live tmux session: {live}")
+
+
+def usable_cwd(saved_cwd: str, warnings: list[str]) -> str:
+    path = Path(saved_cwd).expanduser()
+    if path.is_dir():
+        return str(path)
+    fallback = str(Path.home())
+    warnings.append(f"saved directory {saved_cwd!r} is missing; using {fallback}")
+    return fallback
+
+
+def print_restore_plan(snapshot: dict) -> None:
+    print(f"Restore plan for tmux session {snapshot['session']!r}:")
+    for window in snapshot["windows"]:
+        for pane in window["panes"]:
+            label = f"{window['index']}:{window['name']}"
+            if len(window["panes"]) > 1:
+                label += f".{pane['index']}"
+            if pane["kind"] == "codex":
+                action = f"codex resume {pane['thread_id']}"
+            else:
+                action = "interactive shell"
+            print(f"  {label:<20} {action} in {compact_path(pane['cwd'])}")
+
+
+def restore_snapshot(session_name: str, dry_run: bool = False) -> int:
+    snapshot = read_snapshot(session_name)
+    assert snapshot is not None
+    print_restore_plan(snapshot)
+    already_running = session_exists(session_name)
+    if dry_run:
+        if already_running:
+            print("Dry run only: the live session already exists and was not changed.")
+        return 0
+    if already_running:
+        raise TmuxCodexError(
+            f"tmux session {session_name!r} already exists; refusing to create duplicates"
+        )
+
+    codex_panes = [
+        pane
+        for window in snapshot["windows"]
+        for pane in window["panes"]
+        if pane["kind"] == "codex" and pane.get("thread_id")
+    ]
+    codex_executable = shutil.which("codex") if codex_panes else None
+    if codex_panes and not codex_executable:
+        raise TmuxCodexError("codex is not installed or is not on PATH")
+
+    windows = sorted(snapshot["windows"], key=lambda window: window["index"])
+    if not windows:
+        raise TmuxCodexError("snapshot has no windows")
+    warnings: list[str] = []
+    pane_targets: list[tuple[dict, str]] = []
+    active_window_id: str | None = None
+    created = False
+
+    try:
+        for position, window in enumerate(windows):
+            panes = sorted(window["panes"], key=lambda pane: pane["index"])
+            if not panes:
+                raise TmuxCodexError(f"window {window['index']} has no panes")
+            first_cwd = usable_cwd(panes[0]["cwd"], warnings)
+            if position == 0:
+                result = run_tmux(
+                    "new-session",
+                    "-d",
+                    "-P",
+                    "-F",
+                    "#{window_id}",
+                    "-s",
+                    session_name,
+                    "-n",
+                    window["name"],
+                    "-c",
+                    first_cwd,
+                    "-x",
+                    str(window.get("width", 80)),
+                    "-y",
+                    str(window.get("height", 24)),
+                )
+                created = True
+                window_id = result.stdout.strip()
+                actual_index = int(
+                    run_tmux("display-message", "-p", "-t", window_id, "#{window_index}")
+                    .stdout.strip()
+                )
+                if actual_index != window["index"]:
+                    run_tmux(
+                        "move-window",
+                        "-s",
+                        window_id,
+                        "-t",
+                        f"={session_name}:{window['index']}",
+                    )
+            else:
+                window_id = run_tmux(
+                    "new-window",
+                    "-d",
+                    "-P",
+                    "-F",
+                    "#{window_id}",
+                    "-t",
+                    f"={session_name}:{window['index']}",
+                    "-n",
+                    window["name"],
+                    "-c",
+                    first_cwd,
+                ).stdout.strip()
+
+            initial_panes = run_tmux(
+                "list-panes", "-t", window_id, "-F", "#{pane_id}"
+            ).stdout.splitlines()
+            if len(initial_panes) != 1:
+                raise TmuxCodexError(f"new window {window['index']} did not have one pane")
+            restored_panes = [initial_panes[0]]
+            for pane in panes[1:]:
+                pane_cwd = usable_cwd(pane["cwd"], warnings)
+                pane_id = run_tmux(
+                    "split-window",
+                    "-d",
+                    "-P",
+                    "-F",
+                    "#{pane_id}",
+                    "-t",
+                    window_id,
+                    "-c",
+                    pane_cwd,
+                ).stdout.strip()
+                restored_panes.append(pane_id)
+
+            if len(restored_panes) > 1 and window.get("layout"):
+                run_tmux("select-layout", "-t", window_id, window["layout"])
+            run_tmux("set-option", "-w", "-t", window_id, "automatic-rename", "off")
+            run_tmux("rename-window", "-t", window_id, window["name"])
+
+            for pane, pane_id in zip(panes, restored_panes, strict=True):
+                pane_targets.append((pane, pane_id))
+                if pane.get("active"):
+                    run_tmux("select-pane", "-t", pane_id)
+            if window.get("active"):
+                active_window_id = window_id
+
+        assert codex_executable is not None or not codex_panes
+        for pane, pane_id in pane_targets:
+            if pane["kind"] != "codex" or not pane.get("thread_id"):
+                continue
+            command = (
+                f"{shlex.quote(codex_executable)} resume "
+                f"{shlex.quote(pane['thread_id'])}"
+            )
+            run_tmux("send-keys", "-t", pane_id, "-l", command)
+            run_tmux("send-keys", "-t", pane_id, "Enter")
+
+        if active_window_id:
+            run_tmux("select-window", "-t", active_window_id)
+    except Exception as exc:
+        if created:
+            run_tmux("kill-session", "-t", f"={session_name}", check=False)
+        if isinstance(exc, TmuxCodexError):
+            raise
+        raise TmuxCodexError(f"restore failed: {exc}") from exc
+
+    print(f"Restored tmux session {session_name!r}.")
+    for warning in warnings:
+        print(f"warning: {warning}", file=sys.stderr)
+    print(f"Attach with: tmux attach -t {shlex.quote(session_name)}")
+    return 0
+
+
+def up_command(session_name: str) -> int:
+    if not session_exists(session_name):
+        restore_snapshot(session_name)
+    if os.environ.get("TMUX"):
+        result = run_tmux("switch-client", "-t", f"={session_name}")
+        return result.returncode
+    os.execvp("tmux", ["tmux", "attach-session", "-t", f"={session_name}"])
+    return 0
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="tmux-codex",
+        description="Snapshot tmux layouts and resume the exact Codex threads after WSL restarts.",
+    )
+    subparsers = parser.add_subparsers(dest="command", required=True)
+
+    save = subparsers.add_parser("save", help="atomically save a live tmux session")
+    save.add_argument("session", nargs="?", default="work")
+    save.add_argument("--quiet", action="store_true")
+    save.add_argument(
+        "--if-running",
+        action="store_true",
+        help="exit successfully when the tmux session is absent (for timers)",
+    )
+
+    show = subparsers.add_parser("show", help="show the saved restore mapping")
+    show.add_argument("session", nargs="?", default="work")
+
+    restore = subparsers.add_parser(
+        "restore", help="recreate a missing tmux session from its snapshot"
+    )
+    restore.add_argument("session", nargs="?", default="work")
+    restore.add_argument(
+        "--dry-run", action="store_true", help="print the plan without changing tmux"
+    )
+
+    up = subparsers.add_parser(
+        "up", help="restore if needed, then attach (or switch the current tmux client)"
+    )
+    up.add_argument("session", nargs="?", default="work")
+    return parser
+
+
+def main() -> int:
+    arguments = build_parser().parse_args()
+    try:
+        if arguments.command == "save":
+            return save_command(arguments.session, arguments.quiet, arguments.if_running)
+        if arguments.command == "show":
+            snapshot = read_snapshot(arguments.session)
+            assert snapshot is not None
+            print_snapshot(snapshot)
+            return 0
+        if arguments.command == "restore":
+            return restore_snapshot(arguments.session, arguments.dry_run)
+        if arguments.command == "up":
+            return up_command(arguments.session)
+    except TmuxCodexError as exc:
+        print(f"tmux-codex: {exc}", file=sys.stderr)
+        return 1
+    return 2
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

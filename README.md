@@ -14,7 +14,7 @@ state, logs, browser state, generated caches, or large local binaries.
   but no keys, sockets, logs, or known-host material.
 - `home/bin/` stores workstation SSH bridge helpers.
 - `home/.local/bin/` stores small wrapper scripts, not downloaded binaries.
-- `home/.config/` stores selected application and XDG configs.
+- `home/.config/` stores selected application, XDG, and user-systemd configs.
 - `work/build-ops/` stores FNAL/CERN build sync, archive, controller, and
   GitHub artifact watcher source files.
 - `system/` stores selected system-level reference config that belongs to this
@@ -26,6 +26,13 @@ state, logs, browser state, generated caches, or large local binaries.
 See `docs/local-kerberos-cern-fnal.md` for the local WSL Kerberos setup,
 including the `arroyave@FNAL.GOV` and `marroyav@CERN.CH` principals, the
 installed `/etc/krb5.conf` reference, and the CERN SSH alias layout.
+
+## tmux and Codex Session Recovery
+
+`home/.local/bin/tmux-codex` and the matching user-systemd units periodically
+save the `work` tmux layout and its active Codex thread UUIDs, then recreate the
+layout with the exact conversations after a restart. See
+`docs/tmux-codex-sessions.md` for installation, commands, and limitations.
 
 ## Restore Notes
 
