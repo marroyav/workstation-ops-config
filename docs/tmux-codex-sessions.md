@@ -62,6 +62,49 @@ Codex panes whose thread UUID cannot be resolved are restored as ordinary shell
 panes. Other processes are also restored as shells in their saved working
 directories.
 
+## Attach From Outside
+
+First SSH to the DUNE rendezvous host, then attach to the workstation shell:
+
+```bash
+ssh -K arroyave@dune-fd-test01.fnal.gov
+
+# WL-144132 as marroyav.
+tmux attach -t workstation-shell
+
+# WL-123935 as neutrino.
+tmux attach -t workstation-shell-neutrino
+```
+
+Inside the workstation shell, restore and attach to the Codex tmux session:
+
+```bash
+tmux-codex up work
+```
+
+For a one-shot command from `dune-fd-test01`, skip the intermediate tmux shell
+and run `tmux-codex` through the reverse tunnel:
+
+```bash
+# WL-144132.
+ssh -tt -i /storage/workstation-bridge-arroyave/id_ed25519_wl144132 \
+  -o IdentitiesOnly=yes \
+  -p 2222 marroyav@127.0.0.1 \
+  'tmux-codex up work'
+
+# WL-123935.
+ssh -tt -i /tmp/arroyave/workstation-bridge/id_ed25519 \
+  -o IdentitiesOnly=yes \
+  -o UserKnownHostsFile=/dev/null \
+  -o StrictHostKeyChecking=no \
+  -p 2223 neutrino@localhost \
+  'tmux-codex up work'
+```
+
+Replace `work` with the actual persistent tmux session name. `tmux-codex up`
+restores only if the tmux session is missing; otherwise it attaches to the
+existing session.
+
 ## Runtime State and Backups
 
 Snapshots are written atomically with mode `0600` under

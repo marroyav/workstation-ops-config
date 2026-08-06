@@ -35,6 +35,58 @@ storage:
 The private key and the local `~/.ssh/authorized_keys` file are runtime
 secrets and must not be committed to this repository.
 
+## Login From Remote
+
+Use `dune-fd-test01.fnal.gov` as the Kerberos-authenticated rendezvous host.
+The workstations do not currently accept direct Kerberos SSH into WSL; the
+reverse tunnels below expose only loopback ports on the DUNE host.
+
+From a machine with a valid FNAL Kerberos ticket:
+
+```bash
+ssh -K arroyave@dune-fd-test01.fnal.gov
+```
+
+Then choose the workstation session:
+
+```bash
+# WL-144132 as marroyav, remote loopback port 2222.
+tmux attach -t workstation-shell
+
+# WL-123935 as neutrino, remote loopback port 2223.
+tmux attach -t workstation-shell-neutrino
+```
+
+If the remote tmux shell is missing or stale, connect directly from
+`dune-fd-test01`:
+
+```bash
+# WL-144132.
+ssh -tt -i /storage/workstation-bridge-arroyave/id_ed25519_wl144132 \
+  -o IdentitiesOnly=yes \
+  -p 2222 marroyav@127.0.0.1
+
+# WL-123935.
+ssh -tt -i /tmp/arroyave/workstation-bridge/id_ed25519 \
+  -o IdentitiesOnly=yes \
+  -o UserKnownHostsFile=/dev/null \
+  -o StrictHostKeyChecking=no \
+  -p 2223 neutrino@localhost
+```
+
+Direct Kerberos login to the workstation hostnames was checked on 2026-08-06.
+FNAL Kerberos did not have these service principals:
+
+```text
+host/wl-123935.dhcp.fnal.gov@FNAL.GOV
+host/wl-144132.dhcp.fnal.gov@FNAL.GOV
+```
+
+Until FNAL creates those principals and matching host keytabs are installed on
+the workstations, direct GSSAPI SSH cannot work. Exposing WSL directly would
+also require changing the loopback-only sshd listener and Windows networking or
+firewall rules, so the reverse tunnel remains the preferred access path.
+
 ## Neutrino Workstation Bridge
 
 The same DUNE host can also reach this WSL workstation as
@@ -86,6 +138,14 @@ ssh -tt -i /tmp/arroyave/workstation-bridge/id_ed25519 \
   -o UserKnownHostsFile=/dev/null \
   -o StrictHostKeyChecking=no \
   -p 2223 neutrino@localhost
+```
+
+After reaching the workstation shell, use `tmux-codex up <session>` to restore
+and attach to the persistent Codex tmux session. The default session used by the
+installed systemd units is `work`:
+
+```bash
+tmux-codex up work
 ```
 
 ## Start Or Recover The Bridge
