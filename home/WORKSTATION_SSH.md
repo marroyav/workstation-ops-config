@@ -1,100 +1,121 @@
-# Workstation SSH Bridge Draft
+# Workstation SSH Bridge
 
-The old CERN bridge was retired locally on 2026-05-28. It used this pattern:
+## Current FGZ Setup
 
-1. WSL Debian ran `sshd` on `127.0.0.1:2222`.
-2. A local tmux loop kept a reverse tunnel open with `ssh -R 2222:127.0.0.1:2222 <remote>`.
-3. A remote tmux session SSHed back to `neutrino@localhost -p 2222`.
+This bridge was installed and tested on 2026-08-06:
 
-## What Is Disabled Now
+1. WSL Debian runs the system OpenSSH server on `127.0.0.1:2222`.
+2. A local tmux loop maintains a reverse forward to `dune-fd-test01.fnal.gov`.
+3. DUNE exposes that forward only on its own loopback addresses at port 2222.
+4. The DUNE tmux session `workstation-shell` logs back in as
+   `marroyav@WL-144132`.
 
-- Windows scheduled tasks `WorkstationBridge Launch` and `WorkstationBridge Watchdog` are disabled.
-- The Windows Startup launcher was renamed to `start-workstation-bridge.cmd.disabled`.
-- The local `workstation-reverse-ssh` tmux session was killed.
-- The WSL boot hook and bridge sshd config were moved to disabled files under `/etc`.
-- The CERN SSH host alias `np04-srv-017-bridge` is active again in `/home/neutrino/.ssh/config` as of 2026-06-05.
-- `np04-srv-017-bridge` now reaches `np04-srv-017` through the CERN tunnel host alias `cern-lxtunnel`, which resolves to `marroyav@lxtunnel.cern.ch`.
-- The bridge scripts no longer default to CERN; they require an explicit remote alias or `WORKSTATION_BRIDGE_REMOTE`.
+The end-to-end return login from DUNE was verified successfully.
 
-The detailed CERN-era notes are preserved in:
+## Security Properties
 
-```bash
-/home/neutrino/WORKSTATION_SSH_CERN_RETIRED.md
+- The WSL SSH listener is loopback-only; no Windows or LAN-facing SSH port is
+  opened.
+- Password, keyboard-interactive, and root login are disabled.
+- The server accepts public-key authentication only and allows only
+  `marroyav`.
+- The DUNE return key is restricted in the local `authorized_keys` file to
+  connections sourced from `127.0.0.1`. Agent, X11, and TCP forwarding are
+  disabled for that key.
+- The reverse listener on DUNE is also loopback-only.
+
+The DUNE host's `/home` filesystem was full when this was configured. The
+dedicated private key therefore lives in a mode-0700 directory on persistent
+storage:
+
+```text
+/storage/workstation-bridge-arroyave/id_ed25519_wl144132
 ```
 
-## Fermilab Reuse Checklist
+The private key and the local `~/.ssh/authorized_keys` file are runtime
+secrets and must not be committed to this repository.
 
-## CERN LxTunnel Reuse
+## Start Or Recover The Bridge
 
-If `np04-srv-017` is not resolvable directly from WSL, prime the CERN tunnel first:
-
-```bash
-ssh cern-lxtunnel
-```
-
-The local `/etc/krb5.conf` now maps `cern.ch`, `lxtunnel.cern.ch`, `lxplus.cern.ch`, and `np04-srv-017` to the `CERN.CH` Kerberos realm. This is required for GSSAPI to request `host/lxtunnel*.cern.ch@CERN.CH` tickets instead of service tickets with an empty realm.
-
-After authentication, exit the shell. The SSH control master is kept for 8 hours by `ControlPersist`.
-
-Then test the final bridge host:
+Confirm that the FNAL Kerberos ticket is valid:
 
 ```bash
-ssh np04-srv-017-bridge 'hostname && whoami'
+klist
+ssh dune-fd-test01 'hostname && whoami'
 ```
 
-Launch the workstation reverse bridge through the same path:
+Install, configure, enable, or repair the local SSH service:
 
 ```bash
-WORKSTATION_BRIDGE_REMOTE=np04-srv-017-bridge \
-  /home/neutrino/bin/launch-workstation-on-srv017.sh
+cd ~/work/workstation-ops-config
+WORKSTATION_BRIDGE_INSTALL_WSL_BOOT=1 home/bin/start-workstation-sshd.sh
 ```
 
-Add a future SSH host alias in `/home/neutrino/.ssh/config`, using the commented `fnal-workstation-bridge` block as a template. Then test it directly:
+Launch the retrying FGZ reverse tunnel and the DUNE return-shell session:
 
 ```bash
-ssh fnal-workstation-bridge 'hostname && whoami'
+cd ~/work/workstation-ops-config
+home/bin/launch-workstation-on-fgz.sh
 ```
 
-Start the local loopback SSH endpoint only when you are ready to use the bridge:
+The local SSH service starts with WSL through systemd. The reverse tunnel runs
+inside the local tmux server named `workstation-reverse`; it is not currently
+a Windows startup task. If the workstation or WSL restarts, obtain a valid FNAL
+ticket and rerun the FGZ launcher.
 
-```bash
-/home/neutrino/bin/start-workstation-sshd.sh
-```
+## Connect From DUNE
 
-Launch the bridge explicitly:
-
-```bash
-WORKSTATION_BRIDGE_REMOTE=fnal-workstation-bridge \
-  /home/neutrino/bin/launch-workstation-on-srv017.sh
-```
-
-From the Fermilab remote host, attach to:
+After logging in to DUNE, attach to the maintained workstation shell:
 
 ```bash
 tmux attach -t workstation-shell
 ```
 
-## Optional Autostart
-
-Do not re-enable autostart until the Fermilab host alias and key-based auth are verified.
-
-For WSL boot autostart of the local sshd only:
+For a fresh one-shot login instead:
 
 ```bash
-WORKSTATION_BRIDGE_INSTALL_WSL_BOOT=1 /home/neutrino/bin/start-workstation-sshd.sh
+ssh -i /storage/workstation-bridge-arroyave/id_ed25519_wl144132 \
+  -o IdentitiesOnly=yes \
+  -p 2222 marroyav@127.0.0.1
 ```
 
-For Windows autostart, update the disabled Startup `.cmd` or the disabled Task Scheduler entries to pass:
+## Status Checks
+
+On the workstation:
 
 ```bash
-WORKSTATION_BRIDGE_REMOTE=fnal-workstation-bridge
+systemctl is-enabled ssh.service
+systemctl is-active ssh.service
+ss -ltn 'sport = :2222'
+tmux -L workstation-reverse list-sessions
+home/bin/status-workstation-on-fgz.sh
 ```
 
-## Files
+On DUNE:
 
-- `/home/neutrino/bin/start-workstation-sshd.sh`
-- `/home/neutrino/bin/open-np04-reverse-ssh.sh`
-- `/home/neutrino/bin/launch-workstation-on-srv017.sh`
-- `/home/neutrino/bin/status-workstation-on-srv017.sh`
-- `/home/neutrino/.ssh/config`
-- `/home/neutrino/WORKSTATION_SSH_CERN_RETIRED.md`
+```bash
+ss -ltn 'sport = :2222'
+tmux list-sessions
+```
+
+## Stop The Runtime Bridge
+
+These commands stop the two tmux loops but leave the local SSH service enabled:
+
+```bash
+tmux -L workstation-reverse kill-session -t workstation-reverse-ssh
+ssh dune-fd-test01 'tmux kill-session -t workstation-shell'
+```
+
+## Tracked Files
+
+- `home/bin/start-workstation-sshd.sh`
+- `home/bin/open-np04-reverse-ssh.sh`
+- `home/bin/launch-workstation-on-srv017.sh`
+- `home/bin/launch-workstation-on-fgz.sh`
+- `home/bin/status-workstation-on-srv017.sh`
+- `home/bin/status-workstation-on-fgz.sh`
+- `system/etc/ssh/sshd_config.d/workstation-bridge.conf`
+
+The retired CERN-specific design remains in
+`home/WORKSTATION_SSH_CERN_RETIRED.md`.

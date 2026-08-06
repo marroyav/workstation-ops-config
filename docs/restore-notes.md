@@ -41,7 +41,8 @@ restore behavior.
 Several scripts assume:
 
 - WSL distro name: `Debian`
-- Unix user: `neutrino`
+- Workstation bridge Unix user: `marroyav` by default; it can be overridden
+  with `WORKSTATION_BRIDGE_LOCAL_USER`
 - Windows user path pieces such as `C:\Users\arroyave`
 - CERN username: `marroyav`
 - Xilinx/Vivado 2024.1 paths under `/opt/Xilinx`, `/home/neutrino/tools`, or
@@ -55,6 +56,6 @@ The repo includes:
 
 - `system/etc/ssh/sshd_config.d/workstation-bridge.conf`
 
-Install it manually as root only after reviewing it. At the time this repo was
-created, `/etc/wsl.conf` was not present; the bridge launcher can recreate a WSL
-boot hook if `WORKSTATION_BRIDGE_INSTALL_WSL_BOOT=1` is used.
+The bridge launcher installs and validates this drop-in. With systemd enabled
+in WSL, `WORKSTATION_BRIDGE_INSTALL_WSL_BOOT=1` enables `ssh.service`; it
+does not overwrite `/etc/wsl.conf`.

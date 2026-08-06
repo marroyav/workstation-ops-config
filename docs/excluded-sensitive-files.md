@@ -11,6 +11,8 @@ These files are important but should not be committed to Git.
 - `/home/neutrino/.ssh/known_hosts*`
 - `/home/neutrino/.ssh/cm-*`
 - `/home/neutrino/.ssh/*.log`
+- `/home/marroyav/.ssh/authorized_keys`
+- DUNE: `/storage/workstation-bridge-arroyave/id_ed25519_wl144132`
 
 The SSH configs in this repo may reference those paths, but the key material
 itself needs a separate encrypted backup.
