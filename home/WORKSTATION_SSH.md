@@ -24,6 +24,55 @@ The detailed CERN-era notes are preserved in:
 
 ## Fermilab Reuse Checklist
 
+The active Fermilab bridge host is:
+
+```bash
+ssh -K fnal-workstation-bridge
+```
+
+`fnal-workstation-bridge` points to `arroyave@dune-fd-test01.fnal.gov` and uses
+Kerberos/GSSAPI. On 2026-08-06, remote port `2222` was already occupied by an
+existing workstation session, so this workstation uses remote loopback port
+`2223`.
+
+The remote-side bridge key is intentionally kept outside the home filesystem
+because `/home/arroyave` on `dune-fd-test01` can be full:
+
+```bash
+/tmp/arroyave/workstation-bridge/id_ed25519
+```
+
+Authorize its public key locally in `/home/neutrino/.ssh/authorized_keys` with a
+loopback restriction, for example `from="127.0.0.1,::1" ...`.
+
+Launch this workstation bridge:
+
+```bash
+WORKSTATION_BRIDGE_REMOTE=fnal-workstation-bridge \
+WORKSTATION_BRIDGE_REMOTE_PORT=2223 \
+WORKSTATION_BRIDGE_LOCAL_PORT=2222 \
+WORKSTATION_BRIDGE_LOCAL_SESSION=workstation-reverse-ssh-dune \
+WORKSTATION_BRIDGE_REMOTE_SESSION=workstation-shell-neutrino \
+WORKSTATION_BRIDGE_REMOTE_IDENTITY=/tmp/arroyave/workstation-bridge/id_ed25519 \
+  /home/neutrino/bin/launch-workstation-on-srv017.sh
+```
+
+From `dune-fd-test01`, attach to the ready shell:
+
+```bash
+tmux attach -t workstation-shell-neutrino
+```
+
+Or connect directly from `dune-fd-test01`:
+
+```bash
+ssh -tt -i /tmp/arroyave/workstation-bridge/id_ed25519 \
+  -o IdentitiesOnly=yes \
+  -o UserKnownHostsFile=/dev/null \
+  -o StrictHostKeyChecking=no \
+  -p 2223 neutrino@localhost
+```
+
 ## CERN LxTunnel Reuse
 
 If `np04-srv-017` is not resolvable directly from WSL, prime the CERN tunnel first:
