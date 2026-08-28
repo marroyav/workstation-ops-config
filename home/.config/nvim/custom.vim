@@ -1,4 +1,9 @@
-" Modern Neovim defaults layered onto the existing Fisa/Vim configuration.
+" Modern Neovim defaults layered onto the shared Vim configuration.
+if exists('g:workstation_custom_nvim_loaded')
+  finish
+endif
+let g:workstation_custom_nvim_loaded = 1
+
 let s:python_host = expand('~/.local/share/nvim/provider-venv/bin/python')
 if executable(s:python_host)
   let g:python3_host_prog = s:python_host

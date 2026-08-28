@@ -15,7 +15,7 @@ state, logs, browser state, generated caches, or large local binaries.
 - `home/bin/` stores workstation SSH bridge helpers.
 - `home/.local/bin/` stores small wrapper scripts, including the Brave/Wayland
   launchers, but not downloaded binaries.
-- `home/.config/` stores selected application and XDG configs.
+- `home/.config/` stores selected application, XDG, and user-systemd configs.
 - `home/.config/fontconfig/fonts.conf` prefers JetBrains Mono for the WSL
   `monospace` font family.
 - `home/.config/nvim/init.vim` loads the shared workstation Vim config for
@@ -64,6 +64,13 @@ only its small configuration and installer source in this repository.
 See `docs/local-kerberos-cern-fnal.md` for the local WSL Kerberos setup,
 including the `arroyave@FNAL.GOV` and `marroyav@CERN.CH` principals, the
 installed `/etc/krb5.conf` reference, and the CERN SSH alias layout.
+
+## tmux and Codex Session Recovery
+
+`home/.local/bin/tmux-codex` and the matching user-systemd units periodically
+save the `work` tmux layout and its active Codex thread UUIDs, then recreate the
+layout with the exact conversations after a restart. See
+`docs/tmux-codex-sessions.md` for installation, commands, and limitations.
 
 ## Restore Notes
 

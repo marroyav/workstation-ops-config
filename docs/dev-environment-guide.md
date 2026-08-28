@@ -146,6 +146,21 @@ Popup applications close when you quit the application. For example, `:q`
 closes the Neovim popup, `q` closes `ncdu` or `btop`, and `exit` closes the
 shell popup.
 
+For a persistent tmux session containing Codex conversations, `tmux-codex`
+can save its pane layout and active Codex thread identifiers:
+
+```bash
+tmux-codex save work
+tmux-codex show work
+tmux-codex restore work --dry-run
+tmux-codex up work
+```
+
+`up` restores a missing session and then attaches to it; it simply attaches
+when the session already exists. See
+[`tmux-codex-sessions.md`](tmux-codex-sessions.md) for installing the automatic
+snapshot timer, recovery behavior, and backup requirements.
+
 ## Neovim
 
 Open a file, a directory, or the built-in tutorial:
@@ -166,14 +181,16 @@ Essential Vim commands:
 
 Workstation mappings:
 
+- Space is the leader key: press and release Space, then type the remaining
+  key or keys.
 - `Ctrl-S`: save.
 - `Ctrl-H/J/K/L`: navigate splits.
-- `F3`: file explorer.
-- `F4`: symbol/tag browser.
-- `,e`: fuzzy file finder.
-- `\tt`: terminal split; `Esc Esc` leaves terminal mode.
+- `Space e`: file explorer.
+- `Space f`: find a file under the current search path.
+- `Space g`: search project text with ripgrep.
+- `Space t t`: terminal split; `Esc Esc` leaves terminal mode.
 - `]d` / `[d`: next/previous diagnostic.
-- `\d`: show diagnostic details.
+- `Space d`: show diagnostic details.
 
 The `unnamedplus` clipboard connects Neovim yanks and pastes to the WSLg/
 Windows clipboard.

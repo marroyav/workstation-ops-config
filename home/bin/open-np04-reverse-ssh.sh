@@ -19,6 +19,8 @@ exec ssh \
   -o BatchMode=yes \
   -o ConnectTimeout=10 \
   -o ConnectionAttempts=1 \
+  -o ControlMaster=no \
+  -o ControlPath=none \
   -o ExitOnForwardFailure=yes \
   -o ServerAliveInterval=60 \
   -o ServerAliveCountMax=3 \

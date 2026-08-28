@@ -4,19 +4,20 @@ set -euo pipefail
 remote="${1:-${WORKSTATION_BRIDGE_REMOTE:-}}"
 local_socket="${WORKSTATION_BRIDGE_LOCAL_SOCKET:-workstation-reverse}"
 local_session="${WORKSTATION_BRIDGE_LOCAL_SESSION:-workstation-reverse-ssh}"
-remote_session="${WORKSTATION_BRIDGE_REMOTE_SESSION:-neutrino}"
+remote_session="${WORKSTATION_BRIDGE_REMOTE_SESSION:-workstation-shell}"
 remote_port="${WORKSTATION_BRIDGE_REMOTE_PORT:-2222}"
 local_port="${WORKSTATION_BRIDGE_LOCAL_PORT:-2222}"
 local_user="${WORKSTATION_BRIDGE_LOCAL_USER:-$USER}"
-target_session="${WORKSTATION_BRIDGE_TARGET_SESSION:-Fermi}"
+target_session="${WORKSTATION_BRIDGE_TARGET_SESSION:-}"
 remote_identity="${WORKSTATION_BRIDGE_REMOTE_IDENTITY:-}"
 remote_known_hosts="${WORKSTATION_BRIDGE_REMOTE_KNOWN_HOSTS:-/dev/null}"
+script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 
 shell_quote() {
   printf "%q" "$1"
 }
 
-if [[ ! "$target_session" =~ ^[A-Za-z0-9_.-]+$ ]]; then
+if [[ -n "$target_session" && ! "$target_session" =~ ^[A-Za-z0-9_.-]+$ ]]; then
   echo "WORKSTATION_BRIDGE_TARGET_SESSION contains unsupported characters" >&2
   exit 2
 fi
@@ -30,10 +31,10 @@ EOF
   exit 2
 fi
 
-"$HOME/bin/start-workstation-sshd.sh"
+"$script_dir/start-workstation-sshd.sh"
 
 if ! tmux -L "$local_socket" has-session -t "$local_session" 2>/dev/null; then
-  bridge_loop="while true; do WORKSTATION_BRIDGE_REMOTE_PORT=$(shell_quote "$remote_port") WORKSTATION_BRIDGE_LOCAL_PORT=$(shell_quote "$local_port") $(shell_quote "$HOME/bin/open-np04-reverse-ssh.sh") $(shell_quote "$remote"); echo '[reverse tunnel exited, retrying in 5s]'; sleep 5; done"
+  bridge_loop="while true; do WORKSTATION_BRIDGE_REMOTE_PORT=$(shell_quote "$remote_port") WORKSTATION_BRIDGE_LOCAL_PORT=$(shell_quote "$local_port") $(shell_quote "$script_dir/open-np04-reverse-ssh.sh") $(shell_quote "$remote"); echo '[reverse tunnel exited, retrying in 5s]'; sleep 5; done"
   tmux -L "$local_socket" new-session -d -s "$local_session" \
     "bash -lc $(shell_quote "$bridge_loop")"
   tmux -L "$local_socket" set-option -t "$local_session" prefix C-g
@@ -46,14 +47,16 @@ if [[ -n "$remote_identity" ]]; then
   remote_attach_args+=(-i "$remote_identity" -o IdentitiesOnly=yes)
 fi
 remote_attach_args+=(
+  -o BatchMode=yes
+  -o ConnectTimeout=10
   -o "UserKnownHostsFile=$remote_known_hosts"
   -o StrictHostKeyChecking=no
   -p "$remote_port"
   "$local_user@localhost"
-  tmux
-  attach-session
-  -t "=$target_session"
 )
+if [[ -n "$target_session" ]]; then
+  remote_attach_args+=(tmux attach-session -t "=$target_session")
+fi
 printf -v remote_attach_cmd "%q " "${remote_attach_args[@]}"
 remote_attach_cmd="${remote_attach_cmd% }"
 remote_loop="while true; do $remote_attach_cmd; echo; echo '[workstation shell exited, retrying in 5s]'; sleep 5; done"
@@ -77,7 +80,7 @@ cat <<EOF
 Workstation bridge is up.
 
 From $remote:
-  tmux attach -t $remote_session  # opens local tmux session $target_session
+  tmux attach -t $remote_session
 
 Directly from $remote:
   $remote_attach_cmd

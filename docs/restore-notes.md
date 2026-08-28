@@ -15,6 +15,7 @@ chmod 755 /home/neutrino/bin/*.sh /home/neutrino/.local/bin/vivado*
 chmod 755 /home/neutrino/.local/bin/xilinx-2024.1-env
 chmod 755 /home/neutrino/.local/bin/brave-browser /home/neutrino/.local/bin/brave-x11
 chmod 755 /home/neutrino/.local/bin/gui-wayland /home/neutrino/.local/bin/gui-x11
+chmod 755 /home/neutrino/.local/bin/tmux-codex
 ```
 
 Then install the system packages, signed Brave repository, pinned user-local
@@ -30,11 +31,11 @@ packages are already managed separately. The bootstrap does not store or
 restore downloaded binaries in Git.
 
 Neovim uses `home/.config/nvim/init.vim` to load the shared workstation
-`.vimrc`. After restoring onto a fresh account, run `nvim '+PlugInstall --sync'
-'+UpdateRemotePlugins' '+qa'` once to populate the Neovim plugin directory.
-The bootstrap separately creates `~/.local/share/nvim/provider-venv`, installs
-the Python and optional Node providers, and preserves `/usr/bin/nvim` as a
-fallback behind the user-local current release.
+`.vimrc` and then the Neovim-only `home/.config/nvim/custom.vim` layer. No
+plugin installation step is required. The bootstrap creates
+`~/.local/share/nvim/provider-venv`, installs the Python and optional Node
+providers, and preserves `/usr/bin/nvim` as a fallback behind the user-local
+current release.
 
 JetBrains IDEs running on Windows read IdeaVim config from the Windows user
 home, so copy `home/.ideavimrc` to `C:\Users\arroyave\.ideavimrc` after
@@ -64,6 +65,17 @@ The terminal tool walkthrough is in `docs/dev-environment-guide.md`; the
 explanation of shell pipelines and the `nvim "$(fd --type f | fzf)"` command is
 in `docs/shell-pipes.md`.
 
+To enable automatic tmux/Codex snapshots after copying the user-systemd units:
+
+```bash
+systemctl --user daemon-reload
+systemctl --user enable --now tmux-codex-snapshot.timer
+systemctl --user enable --now tmux-codex-final-snapshot.service
+```
+
+See `docs/tmux-codex-sessions.md` for runtime-state backup requirements and
+restore behavior.
+
 ## Files That Need Separate Secret Backup
 
 - SSH private keys and `authorized_keys`
@@ -75,7 +87,8 @@ in `docs/shell-pipes.md`.
 Several scripts assume:
 
 - WSL distro name: `Debian`
-- Unix user: `neutrino`
+- Workstation bridge Unix user: `marroyav` by default; it can be overridden
+  with `WORKSTATION_BRIDGE_LOCAL_USER`
 - Windows user path pieces such as `C:\Users\arroyave`
 - CERN username: `marroyav`
 - Xilinx/Vivado 2024.1 paths under `/opt/Xilinx`, `/home/neutrino/tools`, or
@@ -89,6 +102,6 @@ The repo includes:
 
 - `system/etc/ssh/sshd_config.d/workstation-bridge.conf`
 
-Install it manually as root only after reviewing it. At the time this repo was
-created, `/etc/wsl.conf` was not present; the bridge launcher can recreate a WSL
-boot hook if `WORKSTATION_BRIDGE_INSTALL_WSL_BOOT=1` is used.
+The bridge launcher installs and validates this drop-in. With systemd enabled
+in WSL, `WORKSTATION_BRIDGE_INSTALL_WSL_BOOT=1` enables `ssh.service`; it
+does not overwrite `/etc/wsl.conf`.
