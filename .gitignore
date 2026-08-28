@@ -31,9 +31,16 @@
 **/.codex/.tmp/
 **/.cache/
 **/.config/chromium/
+**/.config/nvim/autoload/plug.vim
+**/.config/nvim/plugged/
+**/.config/nvim/yankring_history*
 **/.dbus/
 **/.npm/
 **/.rustup/
+**/.local/lib/node_modules/
+**/.local/opt/
+**/.local/share/nvim/
+**/.local/state/
 
 # Runtime output and generated state.
 **/*.log
@@ -51,6 +58,15 @@ downloaded-auth-configs/
 # Large local binaries and vendor/tool caches.
 **/.local/bin/glow
 **/.local/bin/tectonic
+**/.local/bin/bat
+**/.local/bin/delta
+**/.local/bin/eza
+**/.local/bin/fd
+**/.local/bin/fzf
+**/.local/bin/lazygit
+**/.local/bin/neovim-node-host
+**/.local/bin/nvim
+**/.local/bin/starship
 **/.fzf/
 **/.venvs/
 **/node_modules/

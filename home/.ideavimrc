@@ -1,0 +1,21 @@
+" IdeaVim settings for JetBrains IDEs.
+set clipboard+=unnamed
+set ignorecase
+set smartcase
+set incsearch
+set hlsearch
+set number
+set relativenumber
+set scrolloff=5
+set timeoutlen=500
+
+let mapleader = " "
+
+nnoremap <leader>w :w<CR>
+nnoremap <leader>q :q<CR>
+nnoremap <leader>h :nohlsearch<CR>
+nnoremap <leader>f :action GotoFile<CR>
+nnoremap <leader>r :action RecentFiles<CR>
+nnoremap <leader>s :action FindInPath<CR>
+nnoremap <leader>e :action SelectInProjectView<CR>
+nnoremap <leader>t :action ActivateTerminalToolWindow<CR>

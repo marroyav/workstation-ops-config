@@ -52,16 +52,21 @@ WORKSTATION_BRIDGE_REMOTE=fnal-workstation-bridge \
 WORKSTATION_BRIDGE_REMOTE_PORT=2223 \
 WORKSTATION_BRIDGE_LOCAL_PORT=2222 \
 WORKSTATION_BRIDGE_LOCAL_SESSION=workstation-reverse-ssh-dune \
-WORKSTATION_BRIDGE_REMOTE_SESSION=workstation-shell-neutrino \
+WORKSTATION_BRIDGE_REMOTE_SESSION=neutrino \
 WORKSTATION_BRIDGE_REMOTE_IDENTITY=/tmp/arroyave/workstation-bridge/id_ed25519 \
+WORKSTATION_BRIDGE_TARGET_SESSION=Fermi \
   /home/neutrino/bin/launch-workstation-on-srv017.sh
 ```
 
 From `dune-fd-test01`, attach to the ready shell:
 
 ```bash
-tmux attach -t workstation-shell-neutrino
+tmux attach -t neutrino
 ```
+
+This opens the workstation's existing `Fermi` tmux session. It does not create
+a separate empty session. The inner `Fermi` prefix remains `Ctrl-a`; the outer
+DUNE wrapper uses `Ctrl-\\`.
 
 Or connect directly from `dune-fd-test01`:
 
@@ -70,7 +75,8 @@ ssh -tt -i /tmp/arroyave/workstation-bridge/id_ed25519 \
   -o IdentitiesOnly=yes \
   -o UserKnownHostsFile=/dev/null \
   -o StrictHostKeyChecking=no \
-  -p 2223 neutrino@localhost
+  -p 2223 neutrino@localhost \
+  tmux attach-session -t =Fermi
 ```
 
 ## CERN LxTunnel Reuse
@@ -120,7 +126,7 @@ WORKSTATION_BRIDGE_REMOTE=fnal-workstation-bridge \
 From the Fermilab remote host, attach to:
 
 ```bash
-tmux attach -t workstation-shell
+tmux attach -t neutrino
 ```
 
 ## Optional Autostart

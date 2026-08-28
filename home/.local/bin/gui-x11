@@ -1,0 +1,18 @@
+#!/bin/sh
+set -eu
+
+if [ "$#" -eq 0 ]; then
+  printf 'usage: gui-x11 COMMAND [ARG ...]\n' >&2
+  exit 2
+fi
+
+export XDG_SESSION_TYPE=x11
+export GDK_BACKEND=x11
+export QT_QPA_PLATFORM=xcb
+export SDL_VIDEODRIVER=x11
+export ELECTRON_OZONE_PLATFORM_HINT=x11
+export GALLIUM_DRIVER=d3d12
+export MESA_D3D12_DEFAULT_ADAPTER_NAME="${MESA_D3D12_DEFAULT_ADAPTER_NAME:-Intel}"
+unset WAYLAND_DISPLAY
+
+exec "$@"

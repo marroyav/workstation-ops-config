@@ -5,6 +5,7 @@ remote="${1:-${WORKSTATION_BRIDGE_REMOTE:-}}"
 remote_port="${WORKSTATION_BRIDGE_REMOTE_PORT:-2222}"
 local_port="${WORKSTATION_BRIDGE_LOCAL_PORT:-2222}"
 local_user="${WORKSTATION_BRIDGE_LOCAL_USER:-$USER}"
+remote_session="${WORKSTATION_BRIDGE_REMOTE_SESSION:-neutrino}"
 
 if [[ -z "$remote" ]]; then
   cat >&2 <<'EOF'
@@ -21,7 +22,7 @@ echo "Local reverse tunnel tmux:"
 tmux -L workstation-reverse ls 2>/dev/null || true
 echo
 echo "Remote workstation shell tmux:"
-ssh "$remote" "tmux ls 2>/dev/null | grep '^workstation-shell:' || true"
+ssh "$remote" "tmux ls 2>/dev/null | grep '^$remote_session:' || true"
 echo
 echo "Remote command test:"
 ssh "$remote" "ssh -o BatchMode=yes -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no -p $remote_port $local_user@localhost hostname"

@@ -11,7 +11,11 @@ shopt -s histappend
 shopt -s checkwinsize
 
 PROMPT_DIRTRIM=3
-PS1='\u@\h:\w\$ '
+if [ -t 1 ]; then
+  PS1='\[\e[1;34m\]\u@\h\[\e[0m\]:\[\e[36m\]\w\[\e[0m\]\[\e[1;34m\]\$\[\e[0m\] '
+else
+  PS1='\u@\h:\w\$ '
+fi
 
 if [ -d "$HOME/.local/bin" ]; then
   PATH="$HOME/.local/bin:$PATH"
@@ -33,6 +37,10 @@ fi
 alias ll='ls -lh'
 alias la='ls -A'
 
+if [ -f "$HOME/.fzf.bash" ]; then
+  . "$HOME/.fzf.bash"
+fi
+
 use_xilinx_2024_1() {
   local root="$HOME/tools/Xilinx"
 
@@ -49,4 +57,15 @@ use_xilinx_2024_1() {
     . "$root/Vitis/2024.1/settings64.sh"
   fi
 }
-. "$HOME/.cargo/env"
+
+if [ -r "$HOME/.cargo/env" ]; then
+  . "$HOME/.cargo/env"
+fi
+
+# Wayland-first WSLg defaults and interactive productivity helpers.
+if [ -r "$HOME/.config/shell/wayland-wslg.sh" ]; then
+  . "$HOME/.config/shell/wayland-wslg.sh"
+fi
+if [ -r "$HOME/.config/shell/productivity.bash" ]; then
+  . "$HOME/.config/shell/productivity.bash"
+fi

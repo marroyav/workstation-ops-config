@@ -13,10 +13,56 @@ chmod 700 /home/neutrino/.ssh
 chmod 600 /home/neutrino/.ssh/config /home/neutrino/.ssh/sshd_config_workstation
 chmod 755 /home/neutrino/bin/*.sh /home/neutrino/.local/bin/vivado*
 chmod 755 /home/neutrino/.local/bin/xilinx-2024.1-env
+chmod 755 /home/neutrino/.local/bin/brave-browser /home/neutrino/.local/bin/brave-x11
+chmod 755 /home/neutrino/.local/bin/gui-wayland /home/neutrino/.local/bin/gui-x11
 ```
+
+Then install the system packages, signed Brave repository, pinned user-local
+binaries, Neovim providers, and Git productivity include:
+
+```bash
+scripts/bootstrap-dev-environment.sh
+scripts/check-dev-environment.sh
+```
+
+Use `scripts/bootstrap-dev-environment.sh --skip-system` when the APT/Brave
+packages are already managed separately. The bootstrap does not store or
+restore downloaded binaries in Git.
+
+Neovim uses `home/.config/nvim/init.vim` to load the shared workstation
+`.vimrc`. After restoring onto a fresh account, run `nvim '+PlugInstall --sync'
+'+UpdateRemotePlugins' '+qa'` once to populate the Neovim plugin directory.
+The bootstrap separately creates `~/.local/share/nvim/provider-venv`, installs
+the Python and optional Node providers, and preserves `/usr/bin/nvim` as a
+fallback behind the user-local current release.
+
+JetBrains IDEs running on Windows read IdeaVim config from the Windows user
+home, so copy `home/.ideavimrc` to `C:\Users\arroyave\.ideavimrc` after
+restoring WSL files. Windows Terminal font settings live in the Windows profile
+settings JSON, not under `/home/neutrino`; this workstation currently uses
+JetBrains Mono installed as a per-user Windows font. WSL fontconfig uses
+`home/.config/fontconfig/fonts.conf` to prefer JetBrains Mono for the generic
+`monospace` family, but the TTF files themselves are external font assets and
+are not stored in this repository.
+
+Recreate the per-user Windows awake task from the repository root:
+
+```bash
+powershell.exe -NoProfile -ExecutionPolicy Bypass \
+  -File "$(wslpath -w "$PWD/windows/Install-KeepWindowsAwake.ps1")"
+```
+
+This deploys the runtime under `%LOCALAPPDATA%\WorkstationOps` and registers
+`WorkstationOps Keep Windows Awake` to run at Windows sign-in. It prevents
+automatic system sleep but does not keep the display on unless the installer
+is run with `-KeepDisplayOn`.
 
 Then restore SSH keys and tokens from their encrypted backup, not from this
 repo.
+
+The terminal tool walkthrough is in `docs/dev-environment-guide.md`; the
+explanation of shell pipelines and the `nvim "$(fd --type f | fzf)"` command is
+in `docs/shell-pipes.md`.
 
 ## Files That Need Separate Secret Backup
 

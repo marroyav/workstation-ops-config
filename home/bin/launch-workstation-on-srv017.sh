@@ -4,16 +4,22 @@ set -euo pipefail
 remote="${1:-${WORKSTATION_BRIDGE_REMOTE:-}}"
 local_socket="${WORKSTATION_BRIDGE_LOCAL_SOCKET:-workstation-reverse}"
 local_session="${WORKSTATION_BRIDGE_LOCAL_SESSION:-workstation-reverse-ssh}"
-remote_session="${WORKSTATION_BRIDGE_REMOTE_SESSION:-workstation-shell}"
+remote_session="${WORKSTATION_BRIDGE_REMOTE_SESSION:-neutrino}"
 remote_port="${WORKSTATION_BRIDGE_REMOTE_PORT:-2222}"
 local_port="${WORKSTATION_BRIDGE_LOCAL_PORT:-2222}"
 local_user="${WORKSTATION_BRIDGE_LOCAL_USER:-$USER}"
+target_session="${WORKSTATION_BRIDGE_TARGET_SESSION:-Fermi}"
 remote_identity="${WORKSTATION_BRIDGE_REMOTE_IDENTITY:-}"
 remote_known_hosts="${WORKSTATION_BRIDGE_REMOTE_KNOWN_HOSTS:-/dev/null}"
 
 shell_quote() {
   printf "%q" "$1"
 }
+
+if [[ ! "$target_session" =~ ^[A-Za-z0-9_.-]+$ ]]; then
+  echo "WORKSTATION_BRIDGE_TARGET_SESSION contains unsupported characters" >&2
+  exit 2
+fi
 
 if [[ -z "$remote" ]]; then
   cat >&2 <<'EOF'
@@ -44,6 +50,9 @@ remote_attach_args+=(
   -o StrictHostKeyChecking=no
   -p "$remote_port"
   "$local_user@localhost"
+  tmux
+  attach-session
+  -t "=$target_session"
 )
 printf -v remote_attach_cmd "%q " "${remote_attach_args[@]}"
 remote_attach_cmd="${remote_attach_cmd% }"
@@ -68,7 +77,7 @@ cat <<EOF
 Workstation bridge is up.
 
 From $remote:
-  tmux attach -t $remote_session
+  tmux attach -t $remote_session  # opens local tmux session $target_session
 
 Directly from $remote:
   $remote_attach_cmd

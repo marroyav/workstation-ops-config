@@ -1,7 +1,4 @@
-# Setup fzf
-# ---------
-if [[ ! "$PATH" == */home/neutrino/.fzf/bin* ]]; then
-  PATH="${PATH:+${PATH}:}/home/neutrino/.fzf/bin"
+# Set up fzf key bindings and fuzzy completion when fzf is installed.
+if command -v fzf >/dev/null 2>&1; then
+  eval "$(fzf --bash)"
 fi
-
-eval "$(fzf --bash)"
