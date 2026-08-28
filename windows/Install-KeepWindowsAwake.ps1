@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [switch]$KeepDisplayOn,
+    [switch]$AllowDisplaySleep,
     [switch]$Uninstall
 )
 
@@ -11,7 +11,8 @@ $taskName = "WorkstationOps Keep Windows Awake"
 $installDirectory = Join-Path $env:LOCALAPPDATA "WorkstationOps"
 $installedScript = Join-Path $installDirectory "Keep-WindowsAwake.ps1"
 $logPath = Join-Path $installDirectory "Keep-WindowsAwake.log"
-$sourceScript = Join-Path $PSScriptRoot "Keep-WindowsAwake.ps1"
+$repositoryRoot = Split-Path -Parent $PSScriptRoot
+$sourceScript = Join-Path $repositoryRoot "home\bin\keep-windows-awake.ps1"
 
 if ($Uninstall) {
     $existingTask = Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue
@@ -43,8 +44,8 @@ Copy-Item -LiteralPath $sourceScript -Destination $installedScript -Force
 
 $powerShellPath = Join-Path $env:SystemRoot "System32\WindowsPowerShell\v1.0\powershell.exe"
 $actionArguments = "-NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$installedScript`""
-if ($KeepDisplayOn) {
-    $actionArguments += " -KeepDisplayOn"
+if ($AllowDisplaySleep) {
+    $actionArguments += " -AllowDisplaySleep"
 }
 
 $userId = "$env:USERDOMAIN\$env:USERNAME"
@@ -61,7 +62,7 @@ $settings = New-ScheduledTaskSettingsSet `
 
 $task = New-ScheduledTask `
     -Action $action `
-    -Description "Prevents automatic Windows system sleep while this user is signed in." `
+    -Description "Prevents automatic Windows sleep and, by default, display timeout while this user is signed in." `
     -Principal $principal `
     -Settings $settings `
     -Trigger $trigger
@@ -79,5 +80,5 @@ $registeredTask = Get-ScheduledTask -TaskName $taskName
     TaskName = $registeredTask.TaskName
     State = $registeredTask.State
     InstalledScript = $installedScript
-    KeepDisplayOn = $KeepDisplayOn.IsPresent
+    KeepDisplayOn = -not $AllowDisplaySleep.IsPresent
 }

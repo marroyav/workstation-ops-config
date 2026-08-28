@@ -27,8 +27,8 @@ state, logs, browser state, generated caches, or large local binaries.
 - `home/.ideavimrc` stores IdeaVim mappings for JetBrains IDEs.
 - `scripts/` contains the reproducible tool bootstrap and a read-only health
   check.
-- `windows/` contains the native Windows awake runtime and its scheduled-task
-  installer.
+- `home/bin/keep-windows-awake.ps1` is the native Windows awake runtime;
+  `windows/` contains its scheduled-task installer.
 - `work/build-ops/` stores FNAL/CERN build sync, archive, controller, and
   GitHub artifact watcher source files.
 - `system/` stores selected system-level reference config that belongs to this

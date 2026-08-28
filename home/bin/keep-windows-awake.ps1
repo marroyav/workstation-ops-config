@@ -1,41 +1,79 @@
+[CmdletBinding()]
 param(
-    [ValidateRange(5, 3600)]
-    [int]$PulseSeconds = 30
+    [switch]$AllowDisplaySleep,
+
+    [ValidateRange(15, 3600)]
+    [int]$RefreshSeconds = 60
 )
 
-$source = @'
+Set-StrictMode -Version Latest
+$ErrorActionPreference = "Stop"
+
+$nativeSource = @'
 using System;
+using System.ComponentModel;
 using System.Runtime.InteropServices;
 
-public static class KeepAwakeNative
+namespace WorkstationOps
 {
-    [DllImport("kernel32.dll", SetLastError = true)]
-    public static extern uint SetThreadExecutionState(uint esFlags);
+    public static class Awake
+    {
+        private const uint EsSystemRequired = 0x00000001;
+        private const uint EsDisplayRequired = 0x00000002;
+        private const uint EsContinuous = 0x80000000;
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        private static extern uint SetThreadExecutionState(uint executionState);
+
+        public static void Enable(bool keepDisplayOn)
+        {
+            uint state = EsContinuous | EsSystemRequired;
+            if (keepDisplayOn)
+            {
+                state |= EsDisplayRequired;
+            }
+
+            if (SetThreadExecutionState(state) == 0)
+            {
+                throw new Win32Exception(Marshal.GetLastWin32Error());
+            }
+        }
+
+        public static void Clear()
+        {
+            SetThreadExecutionState(EsContinuous);
+        }
+    }
 }
 '@
 
-Add-Type -TypeDefinition $source
+Add-Type -TypeDefinition $nativeSource -Language CSharp
 
-$ES_CONTINUOUS       = [uint32]2147483648
-$ES_SYSTEM_REQUIRED  = [uint32]0x00000001
-$ES_DISPLAY_REQUIRED = [uint32]0x00000002
-$keepAwakeFlags = $ES_CONTINUOUS -bor $ES_SYSTEM_REQUIRED -bor $ES_DISPLAY_REQUIRED
+$installDirectory = Join-Path $env:LOCALAPPDATA "WorkstationOps"
+New-Item -ItemType Directory -Path $installDirectory -Force | Out-Null
+$logPath = Join-Path $installDirectory "Keep-WindowsAwake.log"
+$keepDisplayOn = -not $AllowDisplaySleep.IsPresent
 
-Write-Host "Keeping Windows and the display awake. Press Ctrl+C to stop."
+function Write-AwakeLog {
+    param([Parameter(Mandatory = $true)][string]$Message)
+
+    $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss zzz"
+    Add-Content -LiteralPath $logPath -Value "$timestamp $Message"
+}
 
 try {
+    Write-AwakeLog "started pid=$PID keepDisplayOn=$keepDisplayOn refreshSeconds=$RefreshSeconds"
+
     while ($true) {
-        $result = [KeepAwakeNative]::SetThreadExecutionState($keepAwakeFlags)
-
-        if ($result -eq 0) {
-            throw "SetThreadExecutionState failed with Windows error $([Runtime.InteropServices.Marshal]::GetLastWin32Error())."
-        }
-
-        Start-Sleep -Seconds $PulseSeconds
+        [WorkstationOps.Awake]::Enable($keepDisplayOn)
+        Start-Sleep -Seconds $RefreshSeconds
     }
 }
+catch {
+    Write-AwakeLog "failed: $($_.Exception.Message)"
+    throw
+}
 finally {
-    # Release the keep-awake request when the script exits.
-    [void][KeepAwakeNative]::SetThreadExecutionState($ES_CONTINUOUS)
-    Write-Host "Keep-awake request released."
+    [WorkstationOps.Awake]::Clear()
+    Write-AwakeLog "stopped pid=$PID"
 }

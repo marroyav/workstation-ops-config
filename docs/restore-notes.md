@@ -55,8 +55,8 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass \
 
 This deploys the runtime under `%LOCALAPPDATA%\WorkstationOps` and registers
 `WorkstationOps Keep Windows Awake` to run at Windows sign-in. It prevents
-automatic system sleep but does not keep the display on unless the installer
-is run with `-KeepDisplayOn`.
+automatic system sleep and display timeout. Run the installer with
+`-AllowDisplaySleep` if only the system should be kept awake.
 
 Then restore SSH keys and tokens from their encrypted backup, not from this
 repo.

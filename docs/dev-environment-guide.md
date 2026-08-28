@@ -255,9 +255,17 @@ starship explain
 
 The tracked Windows scripts install a hidden per-user scheduled task named
 `WorkstationOps Keep Windows Awake`. It starts at Windows sign-in and prevents
-automatic system sleep while leaving the normal monitor timeout enabled.
+automatic system sleep and display timeout, matching the existing
+`home/bin/keep-windows-awake.ps1` helper.
 
-Install or refresh it from the repository root in WSL:
+Run the helper manually until Ctrl-C from the repository root in WSL:
+
+```bash
+powershell.exe -NoProfile -ExecutionPolicy Bypass \
+  -File "$(wslpath -w "$PWD/home/bin/keep-windows-awake.ps1")"
+```
+
+Install or refresh the automatic sign-in task:
 
 ```bash
 powershell.exe -NoProfile -ExecutionPolicy Bypass \
@@ -272,9 +280,9 @@ powershell.exe -NoProfile -Command \
 ```
 
 The installed copy and its small run log live under
-`%LOCALAPPDATA%\WorkstationOps`. To keep the display awake too, rerun the
-installer with `-KeepDisplayOn`. To remove the task and deployed files, rerun
-it with `-Uninstall`.
+`%LOCALAPPDATA%\WorkstationOps`. To keep Windows awake while allowing the
+display to turn off normally, rerun the installer with `-AllowDisplaySleep`.
+To remove the task and deployed files, rerun it with `-Uninstall`.
 
 ## Brave and WSLg
 
