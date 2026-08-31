@@ -12,7 +12,8 @@ state, logs, browser state, generated caches, or large local binaries.
 - `home/` mirrors selected files under `/home/neutrino`.
 - `home/.ssh/` stores SSH client/server config and historical config backups,
   but no keys, sockets, logs, or known-host material.
-- `home/bin/` stores workstation SSH bridge helpers.
+- `home/bin/` stores workstation helpers, including SSH bridge and Windows
+  keep-awake commands.
 - `home/.local/bin/` stores small wrapper scripts, not downloaded binaries.
 - `home/.config/` stores selected application, XDG, and user-systemd configs.
 - `work/build-ops/` stores FNAL/CERN build sync, archive, controller, and
@@ -33,6 +34,23 @@ installed `/etc/krb5.conf` reference, and the CERN SSH alias layout.
 save the `work` tmux layout and its active Codex thread UUIDs, then recreate the
 layout with the exact conversations after a restart. See
 `docs/tmux-codex-sessions.md` for installation, commands, and limitations.
+
+## Keep Windows Awake
+
+From WSL, start a hidden Windows keep-awake process with:
+
+```bash
+awake
+```
+
+Restore normal Windows sleep behavior with:
+
+```bash
+awake stop
+```
+
+The command does not require administrator permissions. It expects `awake` and
+`keep-windows-awake.ps1` to be installed together in `~/bin`.
 
 ## Restore Notes
 
