@@ -258,11 +258,11 @@ The tracked Windows scripts install a hidden per-user scheduled task named
 automatic system sleep and display timeout, matching the existing
 `home/bin/keep-windows-awake.ps1` helper.
 
-Run the helper manually until Ctrl-C from the repository root in WSL:
+Start or stop the helper manually from WSL. Both commands return immediately:
 
 ```bash
-powershell.exe -NoProfile -ExecutionPolicy Bypass \
-  -File "$(wslpath -w "$PWD/home/bin/keep-windows-awake.ps1")"
+awake
+awake stop
 ```
 
 Install or refresh the automatic sign-in task:

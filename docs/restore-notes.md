@@ -11,7 +11,7 @@ From the repository root:
 rsync -av home/ /home/neutrino/
 chmod 700 /home/neutrino/.ssh
 chmod 600 /home/neutrino/.ssh/config /home/neutrino/.ssh/sshd_config_workstation
-chmod 755 /home/neutrino/bin/*.sh /home/neutrino/.local/bin/vivado*
+chmod 755 /home/neutrino/bin/*.sh /home/neutrino/bin/awake /home/neutrino/.local/bin/vivado*
 chmod 755 /home/neutrino/.local/bin/xilinx-2024.1-env
 chmod 755 /home/neutrino/.local/bin/brave-browser /home/neutrino/.local/bin/brave-x11
 chmod 755 /home/neutrino/.local/bin/gui-wayland /home/neutrino/.local/bin/gui-x11

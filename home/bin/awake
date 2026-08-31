@@ -1,0 +1,43 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+keep_awake_script="$script_dir/keep-windows-awake.ps1"
+
+if [[ ! -f "$keep_awake_script" ]]; then
+    printf 'Keep-awake script not found: %s\n' "$keep_awake_script" >&2
+    exit 1
+fi
+
+windows_script="$(wslpath -w "$keep_awake_script")"
+
+case "${1:-start}" in
+    start|on)
+        if schtasks.exe /Query /TN 'WorkstationOps Keep Windows Awake' >/dev/null 2>&1; then
+            schtasks.exe /Run /TN 'WorkstationOps Keep Windows Awake' >/dev/null
+        else
+            nohup cmd.exe /d /c start "" powershell.exe \
+                -NoProfile -NonInteractive -WindowStyle Hidden \
+                -ExecutionPolicy Bypass -File "$windows_script" \
+                >/dev/null 2>&1 &
+            disown
+        fi
+        printf 'Windows will stay awake. Run `awake stop` to restore normal sleep.\n'
+        ;;
+    stop|off)
+        if schtasks.exe /Query /TN 'WorkstationOps Keep Windows Awake' >/dev/null 2>&1; then
+            schtasks.exe /End /TN 'WorkstationOps Keep Windows Awake' >/dev/null 2>&1 || true
+        fi
+        powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass \
+            -File "$windows_script" -Stop >/dev/null
+        printf 'Windows keep-awake stopped.\n'
+        ;;
+    -h|--help|help)
+        printf 'Usage: awake [start|stop]\n'
+        ;;
+    *)
+        printf 'Usage: awake [start|stop]\n' >&2
+        exit 2
+        ;;
+esac

@@ -11,6 +11,7 @@ $taskName = "WorkstationOps Keep Windows Awake"
 $installDirectory = Join-Path $env:LOCALAPPDATA "WorkstationOps"
 $installedScript = Join-Path $installDirectory "Keep-WindowsAwake.ps1"
 $logPath = Join-Path $installDirectory "Keep-WindowsAwake.log"
+$pidPath = Join-Path $installDirectory "Keep-WindowsAwake.pid"
 $repositoryRoot = Split-Path -Parent $PSScriptRoot
 $sourceScript = Join-Path $repositoryRoot "home\bin\keep-windows-awake.ps1"
 
@@ -23,6 +24,7 @@ if ($Uninstall) {
 
     Remove-Item -LiteralPath $installedScript -Force -ErrorAction SilentlyContinue
     Remove-Item -LiteralPath $logPath -Force -ErrorAction SilentlyContinue
+    Remove-Item -LiteralPath $pidPath -Force -ErrorAction SilentlyContinue
 
     if (Test-Path -LiteralPath $installDirectory) {
         $remainingFiles = Get-ChildItem -LiteralPath $installDirectory -Force
@@ -71,6 +73,8 @@ $existingTask = Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyConti
 if ($null -ne $existingTask) {
     Stop-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue
 }
+
+Remove-Item -LiteralPath $pidPath -Force -ErrorAction SilentlyContinue
 
 Register-ScheduledTask -TaskName $taskName -InputObject $task -Force | Out-Null
 Start-ScheduledTask -TaskName $taskName
